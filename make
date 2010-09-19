@@ -37,9 +37,9 @@ mkdir -p "$bundle_path"
 ditto "$src" "$bundle_path"
 find "$bundle_path" -type f \( -name "*.plist" -o -name "*.strings" \) -exec plutil -convert binary1 "{}" \;
 PlistBuddy -c 'Print :SupportedSIMs' "${carrier_file}" | sed -e '1d' -e '$d' | xargs -n1 -I"{}" ln -s "$bundle_name" "Payload/{}"
-zip -9ryq "$ipcc_name" Payload/ 
+find . -type f -name .DS_Store -delete && zip -9ryq "$ipcc_name" Payload/
 echo Making package $ipcc_package_name
-zip -9Dyq $ipcc_package_name ../README.txt *.ipcc
+find . -type f -name .DS_Store -delete && zip -9Dyq $ipcc_package_name ../README.txt *.ipcc
 find . ! -name '*.zip' | sed '/^\.\{1,2\}$/d' | xargs rm -rf
 exit 0
 
