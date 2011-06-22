@@ -2,45 +2,72 @@
 #===============================================================================
 #   DESCRIPTION:  Makes carrier bundles.
 #        AUTHOR:  Sorin Ionescu <sorin.ionescu@gmail.com>
-#       VERSION:  1.0.11
+#       VERSION:  1.0.12
 #===============================================================================
 
 export PATH=/usr/bin:/usr/libexec:$PATH
 cd "$( dirname "$0" )"
 
-directory_root="$(pwd)"
-src='../src'
-info_file="${src}/Info.plist"
-carrier_file="${src}/carrier.plist"
-version=`git tag 2>/dev/null | sort -n -k2 -t. | tail -n 1`
-test -z "$version" && version='1.0.0'
+root="$(pwd)"
+src="${root}/src"
+info_plist="${src}/Info.plist"
+carrier_plist="${src}/carrier.plist"
+version=$(git tag 2>/dev/null | sort -n -k2 -t. | tail -n 1)
 
-mkdir -p build
-cd build
+if [[ -z "$version" ]]; then
+    version='1.0.0'
+fi
 
-test ! -e "$info_file" && {
+if [[ ! -e "$info_plist" ]]; then 
     echo ERROR: Info.plist not found.
     exit 1
-}
+fi
 
-ipcc_package_prefix_name="$(echo "$directory_root" | awk 'BEGIN {FS = "/" }; {print $NF}' | tr '[A-Z]' '[a-z]' | sed 's/ /_/g')"
-ipcc_package_prefix_os="ios$(PlistBuddy -c 'Print :MinimumOSVersion' "$info_file" | cut -d'.' -f1-2)"
-ipcc_package_prefix="${ipcc_package_prefix_name}_${ipcc_package_prefix_os}"
-ipcc_package_name="${ipcc_package_prefix_name}_${ipcc_package_prefix_os}_${version}.ipcc.zip"
-ipcc_name="${ipcc_package_prefix_name}.ipcc"
-bundle_name="${ipcc_package_prefix_name}.bundle"
+bundle="$(
+    echo "$root" \
+        | awk -F '/' '{ print $NF }' \
+        | awk -F ' ' '{ OFS = "_" ; $NF = tolower($NF) ; print }')"
+bundle_name="${bundle}.bundle"
 bundle_path="Payload/${bundle_name}"
+ipcc_name="${bundle}.ipcc"
+ios_version="$(
+    PlistBuddy -c 'Print :MinimumOSVersion' "$info_plist" \
+        | cut -d '.' -f 1-2)"
+package_name="$(
+    echo "${bundle}_${ios_version}_ipcc_${version}.zip" \
+        | tr '[A-Z' '[a-z]')"
 
-echo Making carrier bundle $ipcc_name
+
+echo Making: $ipcc_name
+
+# Create or clean build dir.
+mkdir -p build
+cd build
 rm -rf * 
-mkdir -p "$bundle_path"
-ditto "$src" "$bundle_path"
-cp ../README.txt . 
-find "$bundle_path" -type f \( -name "*.plist" -o -name "*.strings" \) -exec plutil -convert binary1 "{}" \;
-PlistBuddy -c 'Print :SupportedSIMs' "${carrier_file}" | sed -e '1d' -e '$d' | xargs -n1 -I"{}" ln -s "$bundle_name" "Payload/{}"
-find . -type f -name .DS_Store -delete && zip -9ryq "$ipcc_name" Payload/
-echo Making package $ipcc_package_name
-find . -type f -name .DS_Store -delete && zip -9Dyq $ipcc_package_name README.txt *.ipcc
+
+# Copy files.
+cp "${root}/README.txt" . 
+ditto "$src" "${bundle_path}/"
+find . -type f -name .DS_Store -delete
+
+# Convert plists to binary.
+find "$bundle_path" \
+    -type f \( -name "*.plist" -o -name "*.strings" \) \
+    -exec plutil \
+    -convert binary1 "{}" \;
+
+# Generate SIM symlinks to bundle.
+PlistBuddy -c 'Print :SupportedSIMs' "${carrier_plist}" \
+    | sed -e '1d' -e '$d' \
+    | xargs -n1 -I"{}" ln -s "$bundle_name" "Payload/{}"
+
+# Zip carrier bundle.
+zip -9ryq "$ipcc_name" Payload/
+
+# Zip package.
+echo Packaging: $package_name
+zip -9Dyq $package_name README.txt *.ipcc
 find . ! -name '*.zip' | sed '/^\.\{1,2\}$/d' | xargs rm -rf
+
 exit 0
 
